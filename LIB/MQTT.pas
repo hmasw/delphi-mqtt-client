@@ -17,7 +17,6 @@ type
     FIsConnected: boolean;
     FRecvThread: TMQTTReadThread;
     FCSSock: TCriticalSection;
-
     FWillMsg: string;
     FWillTopic: string;
     FUsername: string;
@@ -29,6 +28,7 @@ type
     procedure StartRecvThread(aMsg: TMQTTMessage);
     function SendConnectMessage(aMsg: TMQTTMessage): boolean;
     procedure StopAndFreeRecvThread;
+    function CreateClientID: string;
   protected
     FConnAckEvent: TConnAckEvent;
     FPublishEvent: TPublishEvent;
@@ -112,8 +112,7 @@ begin
   FHostname := aHostname;
   FPort := aPort;
   FMessageID := 1;
-  Randomize;  // Randomise and create a random client id.
-  FClientID := 'TMQTT' + IntToStr(Random(1000) + 1);
+  FClientID := CreateClientID;
   FCSSock := TCriticalSection.Create;
   FEnableReceiveThread := True;
 
@@ -133,6 +132,17 @@ begin
   inherited;
 end;
 
+
+function TMQTT.CreateClientID: string;
+var
+  H,M,S,Ms: word;
+begin
+  // Create a 20 digit unique identifier for this client
+  Randomize;  // Randomise and create a random client id.
+  DecodeTime(Now, H, M, S, Ms);
+  Result := 'TMQTT' + IntToHex(H,2) + IntToHex(M,2) + IntToHex(S,2) + IntToHex(Ms,3) +
+    IntToStr(Random(1000000) + 1);
+end;
 
 
 procedure TMQTT.GotConnAck(Sender: TObject; aReturnCode: integer);
