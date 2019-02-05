@@ -79,7 +79,7 @@ object Form1: TForm1
       Margins.Top = 5.000000000000000000
       Margins.Right = 5.000000000000000000
       Margins.Bottom = 5.000000000000000000
-      Size.Width = 172.333312988281200000
+      Size.Width = 172.333312988281300000
       Size.Height = 40.000000000000000000
       Size.PlatformDefault = False
       TabOrder = 0
@@ -187,7 +187,7 @@ object Form1: TForm1
       Margins.Top = 5.000000000000000000
       Margins.Right = 5.000000000000000000
       Margins.Bottom = 5.000000000000000000
-      Size.Width = 380.714294433593700000
+      Size.Width = 380.714294433593800000
       Size.Height = 40.000000000000000000
       Size.PlatformDefault = False
     end
@@ -246,7 +246,7 @@ object Form1: TForm1
       Margins.Top = 5.000000000000000000
       Margins.Right = 5.000000000000000000
       Margins.Bottom = 5.000000000000000000
-      Size.Width = 380.714294433593700000
+      Size.Width = 380.714294433593800000
       Size.Height = 40.000000000000000000
       Size.PlatformDefault = False
     end

@@ -37,12 +37,12 @@ type
     { Private declarations }
   public
     { Public declarations }
-    procedure Log(strMsg: UTF8String);
+    procedure Log(strMsg: string);
     procedure OnConnAck(Sender: TObject; ReturnCode: Integer);
     procedure OnPingResp(Sender: TObject);
     procedure OnSubAck(Sender: TObject; MessageID: integer; GrantedQoS: Array of integer);
     procedure OnUnSubAck(Sender: TObject);
-    procedure OnPublish(Sender: TObject; topic, payload: UTF8String);
+    procedure OnPublish(Sender: TObject; topic, payload: string);
 
   end;
 
@@ -90,7 +90,7 @@ begin
   MQTTClient.Subscribe(edtSubTopic.Text, 0);
 end;
 
-procedure TForm1.Log(strMsg: UTF8String);
+procedure TForm1.Log(strMsg: string);
 begin
   mmoLog.Lines.Add(FormatDateTime('hh:mm:ss', Now) + ' = ' + strMsg);
   mmoLog.ScrollBy(0, mmoLog.Lines.Count);
@@ -106,7 +106,7 @@ begin
   Log('PING! PONG!');
 end;
 
-procedure TForm1.OnPublish(Sender: TObject; topic, payload: UTF8String);
+procedure TForm1.OnPublish(Sender: TObject; topic, payload: string);
 begin
   Log('Publish Received. Topic: '+ topic + ' Payload: ' + payload);
 end;

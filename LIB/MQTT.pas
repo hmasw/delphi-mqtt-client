@@ -3,115 +3,103 @@ unit MQTT;
 interface
 
 uses
-  SysUtils,
-  Types,
-  Classes,
-  FMX.Types,
-  Generics.Collections,
-  SyncObjs,
-  IdTCPClient,
-
-  MQTTHeaders,
-  MQTTReadThread;
+  System.SysUtils, System.Types, System.Classes, Vcl.ExtCtrls,
+  Generics.Collections, System.SyncObjs, IdTCPClient,
+  MQTTHeaders, MQTTReadThread;
 
 type
-  {$IF not declared(TBytes)}
-    TBytes = array of Byte;
-  {$IFEND}
-
-
   TMQTT = class
-    private
-      FClientID: UTF8String;
-      FHostname: string;
-      FPort: Integer;
-      FMessageID: Integer;
-      FisConnected: boolean;
-      FRecvThread: TMQTTReadThread;
-      FCSSock: TCriticalSection;
+  private
+    FClientID: string;
+    FHostname: string;
+    FPort: integer;
+    FMessageID: integer;
+    FIsConnected: boolean;
+    FRecvThread: TMQTTReadThread;
+    FCSSock: TCriticalSection;
 
-      FWillMsg: UTF8String;
-      FWillTopic: UTF8String;
-      FUsername: UTF8String;
-      FPassword: UTF8String;
-      FSocket: TIdTCPClient;
+    FWillMsg: string;
+    FWillTopic: string;
+    FUsername: string;
+    FPassword: string;
+    FSocket: TIdTCPClient;
+    FKeepAliveTimer: TTimer;
+    FEnableReceiveThread: boolean;
+    function SendDisconnectMessage: boolean;
+    procedure StartRecvThread(aMsg: TMQTTMessage);
+    function SendConnectMessage(aMsg: TMQTTMessage): boolean;
+    procedure StopAndFreeRecvThread;
+  protected
+    FConnAckEvent: TConnAckEvent;
+    FPublishEvent: TPublishEvent;
+    FPingRespEvent: TPingRespEvent;
+    FPingReqEvent: TPingReqEvent;
+    FSubAckEvent: TSubAckEvent;
+    FUnSubAckEvent: TUnSubAckEvent;
+    FPubAckEvent: TPubAckEvent;
+    FPubRelEvent: TPubRelEvent;
+    FPubRecEvent: TPubRecEvent;
+    FPubCompEvent: TPubCompEvent;
 
-      FKeepAliveTimer: TTimer;
+    function WriteData(aData: TBytes): boolean;
+    function hasWill: boolean;
+    function getNextMessageId: integer;
+    function CreateRecvThread(var aSocket: TIdTCPClient): boolean;
+  protected
+    // TMQTTMessage Factory Methods.
+    function CreateConnectMessage: TMQTTMessage;
+    function CreateDisconnectMessage: TMQTTMessage;
+    function CreatePublishMessage: TMQTTMessage;
+    function CreatePingReqMessage: TMQTTMessage;
+    function CreateSubscribeMessage: TMQTTMessage;
+    function CreateUnsubscribeMessage: TMQTTMessage;
 
-      // Event Fields
-    protected
-      FConnAckEvent: TConnAckEvent;
-      FPublishEvent: TPublishEvent;
-      FPingRespEvent: TPingRespEvent;
-      FPingReqEvent: TPingReqEvent;
-      FSubAckEvent: TSubAckEvent;
-      FUnSubAckEvent: TUnSubAckEvent;
-      FPubAckEvent: TPubAckEvent;
-      FPubRelEvent: TPubRelEvent;
-      FPubRecEvent: TPubRecEvent;
-      FPubCompEvent: TPubCompEvent;
+    // Our Keep Alive Ping Timer Event
+    procedure KeepAliveTimer_Event(sender: TObject);
 
-      function WriteData(AData: TBytes): boolean;
-      function hasWill: boolean;
-      function getNextMessageId: integer;
-      function createAndResumeRecvThread(var Socket: TIdTCPClient): boolean;
+    // Recv Thread Event Handling Procedures.
+    procedure GotConnAck(Sender: TObject; aReturnCode: integer);
+    procedure GotPingResp(Sender: TObject);
+    procedure GotSubAck(Sender: TObject; aMessageID: integer; aGrantedQoS: Array of integer);
+    procedure GotUnSubAck(Sender: TObject; aMessageID: integer);
+    procedure GotPub(Sender: TObject; aTopic, aPayload: string);
+    procedure GotPubAck(Sender: TObject; aMessageID: integer);
+    procedure GotPubRec(Sender: TObject; aMessageID: integer);
+    procedure GotPubRel(Sender: TObject; aMessageID: integer);
+    procedure GotPubComp(Sender: TObject; aMessageID: integer);
+  public
+    constructor Create(aHostName: string; aPort: integer);
+    destructor Destroy; override;
+    function Connect: boolean;
+    function Disconnect: boolean;
+    function Publish(aTopic: string; aPayload: string): boolean; overload;
+    function Publish(aTopic: string; aPayload: string; aRetain: boolean): boolean; overload;
+    function Publish(aTopic: string; aPayload: string; aRetain: boolean; aQoS: integer): boolean; overload;
+    function Subscribe(aTopic: string; aRequestQoS: integer): integer; overload;
+    function Subscribe(aTopics: TDictionary<string, integer>): integer; overload;
+    function Unsubscribe(aTopic: string): integer; overload ;
+    function Unsubscribe(aTopics: TStringList): integer; overload;
+    function PingReq: boolean;
 
+    property WillTopic: string read FWillTopic write FWillTopic;
+    property WillMsg: string read FWillMsg write FWillMsg;
+    property Username: string read FUsername write FUsername;
+    property Password: string read FPassword write FPassword;
+    property ClientID : string read FClientID write FClientID;
+    property IsConnected: boolean read FIsConnected;
+    property EnableReceiveThread: boolean read FEnableReceiveThread write FEnableReceiveThread;
 
-    protected
-      // TMQTTMessage Factory Methods.
-      function ConnectMessage: TMQTTMessage;
-      function DisconnectMessage: TMQTTMessage;
-      function PublishMessage: TMQTTMessage;
-      function PingReqMessage: TMQTTMessage;
-      function SubscribeMessage: TMQTTMessage;
-      function UnsubscribeMessage: TMQTTMessage;
-
-      // Our Keep Alive Ping Timer Event
-      procedure KeepAliveTimer_Event(sender: TObject);
-
-      // Recv Thread Event Handling Procedures.
-      procedure GotConnAck(Sender: TObject; ReturnCode: integer);
-      procedure GotPingResp(Sender: TObject);
-      procedure GotSubAck(Sender: TObject; MessageID: integer; GrantedQoS: Array of integer);
-      procedure GotUnSubAck(Sender: TObject; MessageID: integer);
-      procedure GotPub(Sender: TObject; topic, payload: UTF8String);
-      procedure GotPubAck(Sender: TObject; MessageID: integer);
-      procedure GotPubRec(Sender: TObject; MessageID: integer);
-      procedure GotPubRel(Sender: TObject; MessageID: integer);
-      procedure GotPubComp(Sender: TObject; MessageID: integer);
-    public
-      constructor Create(aHostName: string; aPort: integer);
-      destructor Destroy; override;
-      function Connect: boolean;
-      function Disconnect: boolean;
-      function Publish(Topic: UTF8String; sPayload: UTF8String): boolean; overload;
-      function Publish(Topic: UTF8String; sPayload: UTF8String; Retain: boolean): boolean; overload;
-      function Publish(Topic: UTF8String; sPayload: UTF8String; Retain: boolean; QoS: integer): boolean; overload;
-      function Subscribe(Topic: UTF8String; RequestQoS: integer): integer; overload;
-      function Subscribe(Topics: TDictionary<UTF8String, integer>): integer; overload;
-      function Unsubscribe(Topic: UTF8String): integer; overload ;
-      function Unsubscribe(Topics: TStringList): integer; overload;
-      function PingReq: boolean;
-
-      property WillTopic: UTF8String read FWillTopic write FWillTopic;
-      property WillMsg: UTF8String read FWillMsg write FWillMsg;
-
-      property Username: UTF8String read FUsername write FUsername;
-      property Password: UTF8String read FPassword write FPassword;
-      property ClientID : UTF8String read FClientID write FClientID;
-      property IsConnected: boolean read FisConnected;
-
-      // Event Handlers
-      property OnConnAck : TConnAckEvent read FConnAckEvent write FConnAckEvent;
-      property OnPublish : TPublishEvent read FPublishEvent write FPublishEvent;
-      property OnPingResp : TPingRespEvent read FPingRespEvent write FPingRespEvent;
-      property OnPingReq : TPingRespEvent read FPingRespEvent write FPingRespEvent;
-      property OnSubAck : TSubAckEvent read FSubAckEvent write FSubAckEvent;
-      property OnUnSubAck : TUnSubAckEvent read FUnSubAckEvent write FUnSubAckEvent;
-      property OnPubAck : TUnSubAckEvent read FUnSubAckEvent write FUnSubAckEvent;
-      property OnPubRec : TUnSubAckEvent read FUnSubAckEvent write FUnSubAckEvent;
-      property OnPubRel : TUnSubAckEvent read FUnSubAckEvent write FUnSubAckEvent;
-      property OnPubComp : TUnSubAckEvent read FUnSubAckEvent write FUnSubAckEvent;
+    // Event Handlers
+    property OnConnAck: TConnAckEvent read FConnAckEvent write FConnAckEvent;
+    property OnPublish: TPublishEvent read FPublishEvent write FPublishEvent;
+    property OnPingResp: TPingRespEvent read FPingRespEvent write FPingRespEvent;
+    property OnPingReq: TPingRespEvent read FPingRespEvent write FPingRespEvent;
+    property OnSubAck: TSubAckEvent read FSubAckEvent write FSubAckEvent;
+    property OnUnSubAck: TUnSubAckEvent read FUnSubAckEvent write FUnSubAckEvent;
+    property OnPubAck: TUnSubAckEvent read FUnSubAckEvent write FUnSubAckEvent;
+    property OnPubRec: TUnSubAckEvent read FUnSubAckEvent write FUnSubAckEvent;
+    property OnPubRel: TUnSubAckEvent read FUnSubAckEvent write FUnSubAckEvent;
+    property OnPubComp: TUnSubAckEvent read FUnSubAckEvent write FUnSubAckEvent;
   end;
 
 implementation
@@ -127,32 +115,30 @@ begin
   Randomize;  // Randomise and create a random client id.
   FClientID := 'TMQTT' + IntToStr(Random(1000) + 1);
   FCSSock := TCriticalSection.Create;
+  FEnableReceiveThread := True;
 
   // Create the timer responsible for pinging.
   FKeepAliveTimer := TTimer.Create(nil);
-  FKeepAliveTimer.Enabled := false;
+  FKeepAliveTimer.Enabled := False;
   FKeepAliveTimer.OnTimer := KeepAliveTimer_Event;
 end;
 
 
 destructor TMQTT.Destroy;
 begin
-  if Assigned(FSocket) then
-    Disconnect;
-  if Assigned(FKeepAliveTimer) then
-    FreeAndNil(FKeepAliveTimer);
-  if Assigned(FRecvThread) then
-    FreeAndNil(FRecvThread);
-  if Assigned(FCSSock) then
-    FreeAndNil(FCSSock);
+  StopAndFreeRecvThread;
+  Disconnect;
+  FreeAndNil(FKeepAliveTimer);
+  FreeAndNil(FCSSock);
   inherited;
 end;
 
 
 
-procedure TMQTT.GotConnAck(Sender: TObject; ReturnCode: integer);
+procedure TMQTT.GotConnAck(Sender: TObject; aReturnCode: integer);
 begin
-  if Assigned(FConnAckEvent) then OnConnAck(Self, ReturnCode);
+  if Assigned(FConnAckEvent) then
+    OnConnAck(Self, aReturnCode);
 end;
 
 
@@ -161,61 +147,58 @@ var
   Msg: TMQTTMessage;
 begin
   Result := False;
+  Disconnect;
   FSocket := TIdTCPClient.Create(nil);   // Create socket and connect.
 
   try
     FSocket.Host := FHostname;
     FSocket.Port := FPort;
     FSocket.Connect;
-    FisConnected := true;
+    FIsConnected := True;
   except
     // If we encounter an exception upon connection then reraise it, free the socket
     // and reset our isConnected flag.
     on E: Exception do
-      begin
-        raise;
-        FisConnected := false;
-        FSocket.Free;
-      end;
+    begin
+      FSocket.Free;
+    end;
   end;
 
-  if FisConnected then
+  if FIsConnected then
   begin
-    Msg := ConnectMessage;
+    Msg := CreateConnectMessage;
     try
-      Msg.Payload.Contents.Add(Self.FClientID);
-      (Msg.VariableHeader as TMQTTConnectVarHeader).WillFlag := ord(hasWill);
-      if hasWill then
-      begin
-        Msg.Payload.Contents.Add(Self.FWillTopic);
-        Msg.Payload.Contents.Add(Self.FWillMsg);
-      end;
-
-      if ((Length(FUsername) > 1) and (Length(FPassword) > 1)) then
-      begin
-        Msg.Payload.Contents.Add(FUsername);
-        Msg.Payload.Contents.Add(FPassword);
-      end;
-
-
-      Result := WriteData(Msg.ToBytes);
-
-      // Start our Receive thread.
-      if (Result and createAndResumeRecvThread(FSocket)) then
-      begin
-        // Use the KeepAlive that we just sent to determine our ping timer.
-        FKeepAliveTimer.Interval := (Round((Msg.VariableHeader as TMQTTConnectVarHeader).KeepAlive * 0.80)) * 1000;
-        FKeepAliveTimer.Enabled := true;
-      end;
-
+      Result := SendConnectMessage(Msg);
+      if Result And FEnableReceiveThread then
+        StartRecvThread(Msg);
     finally
-      Msg.Free;
+      FreeAndNil(Msg);
     end;
   end;
 end;
 
 
-function TMQTT.ConnectMessage: TMQTTMessage;
+function TMQTT.SendConnectMessage(aMsg: TMQTTMessage): boolean;
+begin
+  aMsg.Payload.Contents.Add(FClientID);
+  (aMsg.VariableHeader as TMQTTConnectVarHeader).WillFlag := ord(hasWill);
+  if hasWill then
+  begin
+    aMsg.Payload.Contents.Add(FWillTopic);
+    aMsg.Payload.Contents.Add(FWillMsg);
+  end;
+
+  if ((Length(FUsername) > 1) and (Length(FPassword) > 1)) then
+  begin
+    aMsg.Payload.Contents.Add(FUsername);
+    aMsg.Payload.Contents.Add(FPassword);
+  end;
+
+  Result := WriteData(aMsg.ToBytes);
+end;
+
+
+function TMQTT.CreateConnectMessage: TMQTTMessage;
 begin
   Result := TMQTTMessage.Create;
   Result.VariableHeader := TMQTTConnectVarHeader.Create;
@@ -227,10 +210,22 @@ begin
 end;
 
 
-function TMQTT.createAndResumeRecvThread(var Socket: TIdTCPClient): boolean;
+procedure TMQTT.StartRecvThread(aMsg: TMQTTMessage);
+begin
+  // Start our Receive thread.
+  if CreateRecvThread(FSocket) then
+  begin
+    // Use the KeepAlive that we just sent to determine our ping timer.
+    FKeepAliveTimer.Interval := (Round((aMsg.VariableHeader as TMQTTConnectVarHeader).KeepAlive * 0.80)) * 1000;
+    FKeepAliveTimer.Enabled := True;
+  end;
+end;
+
+
+function TMQTT.CreateRecvThread(var aSocket: TIdTCPClient): boolean;
 begin
   try
-    FRecvThread := TMQTTReadThread.Create(Socket, FCSSock);
+    FRecvThread := TMQTTReadThread.Create(aSocket, FCSSock);
 
     { Todo: Assign Event Handlers here.   }
     FRecvThread.OnConnAck := Self.GotConnAck;
@@ -238,43 +233,58 @@ begin
     FRecvThread.OnPingResp := Self.GotPingResp;
     FRecvThread.OnSubAck := Self.GotSubAck;
     FRecvThread.OnPubAck := Self.GotPubAck;
-    Result := true;
+    Result := True;
   except
-    Result := false;
+    Result := False;
   end;
 end;
 
 
-
-
 function TMQTT.Disconnect: boolean;
-var
-  Msg: TMQTTMessage;
 begin
-  Result := false;
+  Result := False;
   if IsConnected then
     begin
-      FKeepAliveTimer.Enabled := false;
-      Msg := DisconnectMessage;
-      Result := WriteData(Msg.ToBytes);
-      Msg.Free;
-      FRecvThread.Terminate;
-      FRecvThread.WaitFor;
-
-      FSocket.Disconnect;
-
-      FisConnected := False;
-
-      // Free everything.
-	    if Assigned(FRecvThread) then
-        FreeAndNil(FRecvThread);
-      if Assigned(FSocket) then
-        FreeAndNil(FSocket);
+      FKeepAliveTimer.Enabled := False;
+      SendDisconnectMessage;
+      StopAndFreeRecvThread;
+      try
+        FSocket.Disconnect;
+      except
+        // Swallow here because there are a few circumstances where Indy
+        // throws exception on shutdown, but we don't care about the reason
+      end;
+      FIsConnected := False;
+      FreeAndNil(FSocket);
     end;
 end;
 
 
-function TMQTT.DisconnectMessage: TMQTTMessage;
+procedure TMQTT.StopAndFreeRecvThread;
+begin
+  if Assigned(FRecvThread) then
+  begin
+    FRecvThread.Terminate;
+    FRecvThread.WaitFor;
+    FreeAndNil(FRecvThread);
+  end;
+end;
+
+
+function TMQTT.SendDisconnectMessage: boolean;
+var
+  Msg: TMQTTMessage;
+begin
+  Msg := CreateDisconnectMessage;
+  try
+    Result := WriteData(Msg.ToBytes);
+  finally
+    Msg.Free;
+  end;
+end;
+
+
+function TMQTT.CreateDisconnectMessage: TMQTTMessage;
 begin
   Result := TMQTTMessage.Create;
   Result.FixedHeader.MessageType := Ord(TMQTTMessageType.DISCONNECT);
@@ -297,9 +307,9 @@ end;
 function TMQTT.hasWill: boolean;
 begin
   if ((Length(FWillTopic) < 1) and (Length(FWillMsg) < 1)) then
-    Result := false
+    Result := False
   else
-    Result := true;
+    Result := True;
 end;
 
 
@@ -314,20 +324,20 @@ function TMQTT.PingReq: boolean;
 var
   Msg: TMQTTMessage;
 begin
-  Result := false;
+  Result := False;
   if IsConnected then
   begin
-    Msg := PingReqMessage;
+    Msg := CreatePingReqMessage;
     if WriteData(Msg.ToBytes) then
-      Result := true
+      Result := True
     else
-      Result := false;
+      Result := False;
     Msg.Free;
   end;
 end;
 
 
-function TMQTT.PingReqMessage: TMQTTMessage;
+function TMQTT.CreatePingReqMessage: TMQTTMessage;
 begin
   Result := TMQTTMessage.Create;
   Result.FixedHeader.MessageType := Ord(TMQTTMessageType.PINGREQ);
@@ -341,38 +351,40 @@ begin
 end;
 
 
-function TMQTT.Publish(Topic, sPayload: UTF8String; Retain: boolean): boolean;
+function TMQTT.Publish(aTopic, aPayload: string; aRetain: boolean): boolean;
 begin
-  Result := Publish(Topic, sPayload, Retain, 0);
+  Result := Publish(aTopic, aPayload, aRetain, 0);
 end;
 
 
-function TMQTT.Publish(Topic, sPayload: UTF8String): boolean;
+function TMQTT.Publish(aTopic, aPayload: string): boolean;
 begin
-  Result := Publish(Topic, sPayload, false, 0);
+  Result := Publish(aTopic, aPayload, False, 0);
 end;
 
 
-function TMQTT.Publish(Topic, sPayload: UTF8String; Retain: boolean;
-  QoS: integer): boolean;
+function TMQTT.Publish(aTopic, aPayload: string; aRetain: boolean; aQoS: integer): boolean;
 var
   Msg: TMQTTMessage;
 begin
   Result := False;
-  if ((QoS > -1) and (QoS <= 3)) then
+  if ((aQoS > -1) and (aQoS <= 3)) then
   begin
     if IsConnected then
     begin
-       Msg := PublishMessage;
-       Msg.FixedHeader.QoSLevel := QoS;
-       (Msg.VariableHeader as TMQTTPublishVarHeader).QoSLevel := QoS;
-       (Msg.VariableHeader as TMQTTPublishVarHeader).Topic := Topic;
-       if (QoS > 0) then
-         (Msg.VariableHeader as TMQTTPublishVarHeader).MessageID := getNextMessageId;
-       Msg.Payload.Contents.Add(sPayload);
-       Msg.Payload.PublishMessage := true;
-       Result := WriteData(Msg.ToBytes);
-       Msg.Free;
+       Msg := CreatePublishMessage;
+       try
+         Msg.FixedHeader.QoSLevel := aQoS;
+         (Msg.VariableHeader as TMQTTPublishVarHeader).QoSLevel := aQoS;
+         (Msg.VariableHeader as TMQTTPublishVarHeader).Topic := aTopic;
+         if (aQoS > 0) then
+           (Msg.VariableHeader as TMQTTPublishVarHeader).MessageID := getNextMessageId;
+         Msg.Payload.Contents.Add(aPayload);
+         Msg.Payload.PublishMessage := True;
+         Result := WriteData(Msg.ToBytes);
+       finally
+         Msg.Free;
+       end;
     end;
   end
   else
@@ -380,78 +392,81 @@ begin
 end;
 
 
-function TMQTT.PublishMessage: TMQTTMessage;
+function TMQTT.CreatePublishMessage: TMQTTMessage;
 begin
   Result := TMQTTMessage.Create;
   Result.FixedHeader.MessageType := Ord(TMQTTMessageType.PUBLISH);
-  Result.VariableHeader := TMQTTPublishVarHeader.Create(0);
+  Result.VariableHeader := TMQTTPublishVarHeader.Create;
   Result.Payload := TMQTTPayload.Create;
 end;
 
 
-procedure TMQTT.GotPubRec(Sender: TObject; MessageID: integer);
+procedure TMQTT.GotPubRec(Sender: TObject; aMessageID: integer);
 begin
   if Assigned(FPubRecEvent) then
-    OnPubRec(Self, MessageID);
+    OnPubRec(Self, aMessageID);
 end;
 
 
-procedure TMQTT.GotPubRel(Sender: TObject; MessageID: integer);
+procedure TMQTT.GotPubRel(Sender: TObject; aMessageID: integer);
 begin
   if Assigned(FPubRelEvent) then
-    OnPubRel(Self, MessageID);
+    OnPubRel(Self, aMessageID);
 end;
 
 
-function TMQTT.Subscribe(Topic: UTF8String; RequestQoS: integer): integer;
+function TMQTT.Subscribe(aTopic: string; aRequestQoS: integer): integer;
 var
-  dTopics: TDictionary<UTF8String, integer>;
+  dTopics: TDictionary<string, integer>;
 begin
-  dTopics := TDictionary<UTF8String, integer>.Create;
-  dTopics.Add(Topic, RequestQoS);
+  dTopics := TDictionary<string, integer>.Create;
+  dTopics.Add(aTopic, aRequestQoS);
   Result := Subscribe(dTopics);
   dTopics.Free;
 end;
 
 
-procedure TMQTT.GotSubAck(Sender: TObject; MessageID: integer;
-  GrantedQoS: array of integer);
+procedure TMQTT.GotSubAck(Sender: TObject; aMessageID: integer;
+  aGrantedQoS: array of integer);
 begin
-  if Assigned(FSubAckEvent) then OnSubAck(Self, MessageID, GrantedQoS);
+  if Assigned(FSubAckEvent) then OnSubAck(Self, aMessageID, aGrantedQoS);
 end;
 
 
-function TMQTT.Subscribe(Topics: TDictionary<UTF8String, integer>): integer;
+function TMQTT.Subscribe(aTopics: TDictionary<string, integer>): integer;
 var
   Msg: TMQTTMessage;
   MsgId: Integer;
-  sTopic: UTF8String;
+  sTopic: string;
   data: TBytes;
 begin
   Result := -1;
   if IsConnected then
     begin
-      Msg := SubscribeMessage;
-      MsgId := getNextMessageId;
-      (Msg.VariableHeader as TMQTTSubscribeVarHeader).MessageID := MsgId;
+      Msg := CreateSubscribeMessage;
+      try
+        MsgId := getNextMessageId;
+        (Msg.VariableHeader as TMQTTSubscribeVarHeader).MessageID := MsgId;
 
-      for sTopic in Topics.Keys do
-      begin
-        Msg.Payload.Contents.Add(sTopic);
-        Msg.Payload.Contents.Add(IntToStr(Topics.Items[sTopic]))
+        for sTopic in aTopics.Keys do
+        begin
+          Msg.Payload.Contents.Add(sTopic);
+          Msg.Payload.Contents.Add(IntToStr(aTopics.Items[sTopic]))
+        end;
+        // the subscribe message contains integer literals not encoded as UTF8Strings.
+        Msg.Payload.ContainsIntLiterals := True;
+
+        data := Msg.ToBytes;
+        if WriteData(data) then
+          Result := MsgId;
+      finally
+        Msg.Free;
       end;
-      // the subscribe message contains integer literals not encoded as UTF8Strings.
-      Msg.Payload.ContainsIntLiterals := true;
-
-      data := Msg.ToBytes;
-      if WriteData(data) then Result := MsgId;
-
-      Msg.Free;
     end;
 end;
 
 
-function TMQTT.SubscribeMessage: TMQTTMessage;
+function TMQTT.CreateSubscribeMessage: TMQTTMessage;
 begin
   Result := TMQTTMessage.Create;
   Result.FixedHeader.MessageType := Ord(TMQTTMessageType.SUBSCRIBE);
@@ -461,25 +476,25 @@ begin
 end;
 
 
-function TMQTT.Unsubscribe(Topic: UTF8String): integer;
+function TMQTT.Unsubscribe(aTopic: string): integer;
 var
   slTopics: TStringList;
 begin
   slTopics := TStringList.Create;
-  slTopics.Add(Topic);
+  slTopics.Add(aTopic);
   Result := Unsubscribe(slTopics);
   slTopics.Free;
 end;
 
 
-procedure TMQTT.GotUnSubAck(Sender: TObject; MessageID: integer);
+procedure TMQTT.GotUnSubAck(Sender: TObject; aMessageID: integer);
 begin
   if Assigned(FUnSubAckEvent) then
-    OnUnSubAck(Self, MessageID);
+    OnUnSubAck(Self, aMessageID);
 end;
 
 
-function TMQTT.Unsubscribe(Topics: TStringList): integer;
+function TMQTT.Unsubscribe(aTopics: TStringList): integer;
 var
   Msg: TMQTTMessage;
   MsgId: integer;
@@ -487,10 +502,10 @@ begin
   Result := -1;
   if IsConnected then
     begin
-      Msg := UnsubscribeMessage;
+      Msg := CreateUnsubscribeMessage;
       MsgId := getNextMessageId;
       (Msg.VariableHeader as TMQTTSubscribeVarHeader).MessageID := MsgId;
-      Msg.Payload.Contents.AddStrings(Topics);
+      Msg.Payload.Contents.AddStrings(aTopics);
       if WriteData(Msg.ToBytes) then
         Result := MsgId;
       Msg.Free;
@@ -498,7 +513,7 @@ begin
 end;
 
 
-function TMQTT.UnsubscribeMessage: TMQTTMessage;
+function TMQTT.CreateUnsubscribeMessage: TMQTTMessage;
 begin
   Result := TMQTTMessage.Create;
   Result.FixedHeader.MessageType := Ord(TMQTTMessageType.UNSUBSCRIBE);
@@ -508,7 +523,7 @@ begin
 end;
 
 
-function TMQTT.WriteData(AData: TBytes): boolean;
+function TMQTT.WriteData(aData: TBytes): boolean;
 var
   dataStream: TMemoryStream;
 begin
@@ -517,38 +532,41 @@ begin
   begin
     try
       dataStream := TMemoryStream.Create;
-      dataStream.Position := 0;
-      dataStream.WriteBuffer(AData, Length(AData));
-      FSocket.IOHandler.Write(dataStream);
-      dataStream.Free;
+      try
+        dataStream.Position := 0;
+        dataStream.WriteBuffer(aData, Length(aData));
+        FSocket.IOHandler.Write(dataStream);
+      finally
+        dataStream.Free;
+      end;
       Result := True;
-      FisConnected := true;
+      FIsConnected := True;
     except
       Result := False;
-      FisConnected := false;
+      FIsConnected := False;
     end;
   end;
 end;
 
 
-procedure TMQTT.GotPub(Sender: TObject; topic, payload: UTF8String);
+procedure TMQTT.GotPub(Sender: TObject; aTopic, aPayload: string);
 begin
   if Assigned(FPublishEvent) then
-    OnPublish(Self, topic, payload);
+    OnPublish(Self, aTopic, aPayload);
 end;
 
 
-procedure TMQTT.GotPubAck(Sender: TObject; MessageID: integer);
+procedure TMQTT.GotPubAck(Sender: TObject; aMessageID: integer);
 begin
   if Assigned(FPubAckEvent) then
-    OnPubAck(Self, MessageID);
+    OnPubAck(Self, aMessageID);
 end;
 
 
-procedure TMQTT.GotPubComp(Sender: TObject; MessageID: integer);
+procedure TMQTT.GotPubComp(Sender: TObject; aMessageID: integer);
 begin
   if Assigned(FPubCompEvent) then
-    OnPubComp(Self, MessageID);
+    OnPubComp(Self, aMessageID);
 end;
 
 end.

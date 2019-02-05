@@ -28,8 +28,8 @@ type
 
   TMQTTReadThread = class(TThread)
   private
-    FPSocket: TIdTCPClient;
-    FCSock: TCriticalSection;
+    FTcpClient: TIdTCPClient;
+    FLock: TCriticalSection;
     FCurrentMsg: TUnparsedMsg;
     FCurrentRecvState: TMQTTRecvState;
 
@@ -47,14 +47,12 @@ type
 
     procedure ProcessMessage;
     function readSingleString(const dataStream: TBytes; const indexStartAt: Integer; var StringRead: string): integer;
-    function readStringWithoutPrefix(const dataStream: TBytes;
-      const indexStartAt: Integer; var StringRead: string): integer;
+    function readStringWithoutPrefix(const dataStream: TBytes; const indexStartAt: Integer; var StringRead: string): integer;
   protected
-    procedure CleanStart;
     function readMessageId(const dataStream: TBytes; const indexStartAt: Integer;  var messageId: integer): integer;
     procedure Execute; override;
   public
-    constructor Create(var Socket: TIdTCPClient;var CSSock: TCriticalSection);
+    constructor Create(var aTcpClient: TIdTCPClient;var aLock: TCriticalSection);
 
     // Event properties.
     property OnConnAck: TConnAckEvent read FConnAckEvent write FConnAckEvent;
@@ -122,21 +120,16 @@ end;
 
 
 
-procedure TMQTTReadThread.CleanStart;
-begin
-  FCurrentRecvState := TMQTTRecvState.FixedHeaderByte;
-end;
 
-
-constructor TMQTTReadThread.Create(var Socket: TIdTCPClient; var CSSock: TCriticalSection);
+constructor TMQTTReadThread.Create(var aTcpClient: TIdTCPClient; var aLock: TCriticalSection);
 begin
   inherited Create(false);
 
-  FPSocket := Socket;
-  FCSock := CSSock;
+  FTcpClient := aTcpClient;
+  FLock := aLock;
   FreeOnTerminate := false;
 
-  CleanStart;
+  FCurrentRecvState := TMQTTRecvState.FixedHeaderByte;
 end;
 
 
@@ -156,12 +149,12 @@ begin
   RLInt := 0;
   while not Terminated do
     begin
-      if FPSocket.IOHandler.CheckForDataOnSource(1000) then
-      if not FPSocket.IOHandler.InputBufferIsEmpty then
+      if FTcpClient.IOHandler.CheckForDataOnSource(1000) then
+      if not FTcpClient.IOHandler.InputBufferIsEmpty then
       begin
-        RxLen := FPSocket.IOHandler.InputBuffer.Size;
+        RxLen := FTcpClient.IOHandler.InputBuffer.Size;
         indyBuffer := nil;
-        FPSocket.IOHandler.ReadBytes(indyBuffer, RxLen);
+        FTcpClient.IOHandler.ReadBytes(indyBuffer, RxLen);
         for i := 0 to RxLen - 1 do
         begin
           case FCurrentRecvState of
@@ -281,7 +274,7 @@ begin
          // Todo: This only applies for QoS level 0 messages.
          dataCaret := 0;
          dataCaret := readSingleString(NewMsg.Data, dataCaret, strTopic);
-         dataCaret := readStringWithoutPrefix(NewMsg.Data, dataCaret, strPayload);
+         readStringWithoutPrefix(NewMsg.Data, dataCaret, strPayload);
          if Assigned(FPublishEvent) then
            OnPublish(Self, strTopic, strPayload);
       end;
@@ -291,9 +284,7 @@ begin
         begin
           SetLength(grantedQoS, Length(NewMsg.Data) - 2);
           for I := 0 to Length(NewMsg.Data) - 1 do
-            begin
-              grantedQoS[i] := NewMsg.Data[i + 2];
-            end;
+            grantedQoS[i] := NewMsg.Data[i + 2];
           if Assigned(FSubAckEvent) then OnSubAck(Self, TMQTTRecvUtilities.MSBLSBToInt(Copy(NewMsg.Data, 0, 2)), grantedQoS);
         end;
       end;
