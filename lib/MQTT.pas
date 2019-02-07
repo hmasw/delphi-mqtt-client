@@ -80,6 +80,7 @@ type
     function Unsubscribe(aTopic: string): integer; overload ;
     function Unsubscribe(aTopics: TStringList): integer; overload;
     function PingReq: boolean;
+    procedure ConnectPublishDisconnect(aHostName: string; aPort: integer; aTopic, aMsg: string);
 
     property WillTopic: string read FWillTopic write FWillTopic;
     property WillMsg: string read FWillMsg write FWillMsg;
@@ -103,6 +104,7 @@ type
   end;
 
 implementation
+
 
 
 constructor TMQTT.Create(aHostName: string; aPort: integer);
@@ -142,6 +144,19 @@ begin
   DecodeTime(Now, H, M, S, Ms);
   Result := 'TMQTT' + IntToHex(H,2) + IntToHex(M,2) + IntToHex(S,2) + IntToHex(Ms,3) +
     IntToStr(Random(1000000) + 1);
+end;
+
+
+procedure TMQTT.ConnectPublishDisconnect(aHostName: string; aPort: integer; aTopic, aMsg: string);
+begin
+  FHostName := aHostName;
+  FPort := aPort;
+  if Connect then
+  begin
+    EnableReceiveThread := False;
+    Publish(aTopic, aMsg);
+    Disconnect;
+  end;
 end;
 
 
