@@ -1,4 +1,6 @@
-# delphi-mqtt-client (Uses Indy) 
+# A Delphi library / component that enables MQTT sending from a Delphi application
+
+# Usage
 Compiles and runs with Delphi Berlin
 
 # History
