@@ -1,3 +1,6 @@
+# Archived!
+This repository is now archived, as it is not used by any project any more
+
 # A Delphi library / component that enables MQTT sending from a Delphi application
 
 # Usage
